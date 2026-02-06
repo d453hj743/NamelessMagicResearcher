@@ -1,0 +1,1260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>1H NMR Report Generator</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2c3e50">
+    <!-- OCR: Tesseract.js (Local) -->
+    <script src="tesseract.min.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js');
+            });
+        }
+    </script>
+    <style>
+        :root {
+            /* Light Mode Variables */
+            --primary: #2c3e50;
+            --accent: #2980b9;
+            --success: #27ae60;
+            --danger: #c0392b;
+            --bg: #f8f9fa;
+            --panel: #ffffff;
+            --border: #e9ecef;
+            --text-main: #2c3e50;
+            --text-muted: #666;
+            --input-bg: #ffffff;
+            --input-border: #ced4da;
+            --canvas-bg: #fafafa;
+        }
+
+        [data-theme="dark"] {
+            /* Dark Mode Variables */
+            --primary: #3498db;
+            --accent: #3498db;
+            --bg: #1a1a1a;
+            --panel: #2d2d2d;
+            --border: #444;
+            --text-main: #e0e0e0;
+            --text-muted: #aaa;
+            --input-bg: #3d3d3d;
+            --input-border: #555;
+            --canvas-bg: #222;
+        }
+
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            transition: background-color 0.3s, color 0.3s;
+            font-size: 1.1rem;
+        }
+
+        /* Toast Notification Styles */
+        .toast-container {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 2147483647; 
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: none;
+        }
+        .toast {
+            padding: 12px 24px;
+            border-radius: 6px;
+            color: white;
+            background-color: #333;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            font-size: 1.15rem;
+            display: flex;
+            align-items: center;
+            min-width: 250px;
+            pointer-events: auto;
+        }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast-success { background-color: #27ae60; }
+        .toast-error { background-color: #c0392b; }
+        .toast-info { background-color: #2980b9; }
+
+        /* OCR Styles */
+        .ocr-section {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            width: 240px;
+            background: var(--panel);
+            border: 2px solid var(--accent);
+            padding: 12px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            z-index: 1000;
+            font-size: 1rem;
+            color: var(--text-main);
+            transition: background-color 0.3s;
+        }
+        .ocr-section label {
+            font-size: 1rem;
+            margin-bottom: 8px;
+            color: var(--accent);
+            display: block;
+            font-weight: bold;
+        }
+        .ocr-preview-container {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            justify-content: center;
+        }
+        .ocr-thumb {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+        }
+        #ocrStatus {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-top: 5px;
+            line-height: 1.2;
+        }
+        .hidden-canvas {
+            display: none;
+        }
+
+        /* Responsive Layout for OCR */
+        @media (max-width: 1300px) {
+            body { justify-content: flex-end; padding-right: 50px; }
+        }
+        @media (max-width: 1100px) {
+            .ocr-section { position: static; width: 100%; max-width: 900px; margin-bottom: 20px; }
+            body { flex-direction: column; align-items: center; padding: 20px; justify-content: flex-start; }
+        }
+
+        .container {
+            background-color: var(--panel);
+            width: 100%;
+            max-width: 900px;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+            transition: background-color 0.3s;
+        }
+
+        .header-row {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        h1 {
+            font-weight: 800;
+            margin: 0;
+            color: var(--text-main);
+            font-size: 2.4rem;
+            text-align: center;
+        }
+
+        h3 {
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 10px;
+            margin-top: 0;
+            color: var(--text-main);
+            font-size: 1.45rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .section {
+            margin-bottom: 25px;
+            padding: 24px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+
+        .row {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .col {
+            flex: 1;
+            min-width: 150px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            background-color: var(--input-bg);
+            border: 1px solid var(--input-border);
+            color: var(--text-main);
+            border-radius: 4px;
+            font-size: 1.15rem;
+            box-sizing: border-box;
+        }
+
+        textarea {
+            font-family: 'Consolas', monospace;
+        }
+
+        #reportOutput {
+            width: 100%;
+            min-height: 80px;
+            padding: 12px;
+            background-color: var(--input-bg);
+            border: 1px solid var(--input-border);
+            color: var(--text-main);
+            border-radius: 4px;
+            font-size: 1.15rem;
+            box-sizing: border-box;
+            word-wrap: break-word;
+            cursor: text;
+            overflow-y: auto;
+        }
+
+        /* Modernized Buttons */
+        button {
+            border: none;
+            padding: 12px 18px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        button:active { transform: scale(0.98); }
+        button:hover { opacity: 0.95; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        
+        .btn-primary { background: linear-gradient(135deg, var(--accent), #1d6fa5); }
+        .btn-success { background: linear-gradient(135deg, var(--success), #219150); }
+        .btn-danger { 
+            background: #fff; 
+            color: var(--danger); 
+            border: 1px solid #ffcfcf; 
+            padding: 6px 12px;
+            font-size: 1rem;
+            width: auto;
+        }
+        .btn-danger:hover { background: #fff5f5; color: #a93226; border-color: var(--danger); }
+        
+        .btn-neutral { 
+            background: var(--input-bg); 
+            color: var(--text-main); 
+            border: 1px solid var(--border); 
+        }
+        .btn-neutral:hover { background: var(--bg); }
+
+        .btn-sm { padding: 6px 12px; font-size: 1rem; width: auto; }
+
+        .theme-toggle {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            width: auto;
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            font-size: 1.4rem;
+            position: absolute;
+            right: 0;
+        }
+        
+        .theme-toggle:hover {
+            background-color: var(--border);
+        }
+
+        .helper {
+            font-size: 1rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+            margin-bottom: 4px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            border-radius: 8px;
+            overflow: hidden; /* For rounded corners */
+        }
+
+        th {
+            text-align: left;
+            padding: 12px 10px;
+            background: var(--bg);
+            border-bottom: 2px solid var(--border);
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            letter-spacing: 0.5px;
+        }
+
+        td {
+            padding: 10px 8px;
+            border-bottom: 1px solid var(--border);
+            transition: background-color 0.2s;
+        }
+
+        /* Zebra Striping */
+        #signalTable tbody tr:nth-child(even) {
+            background-color: rgba(0, 0, 0, 0.02);
+        }
+        [data-theme="dark"] #signalTable tbody tr:nth-child(even) {
+            background-color: rgba(255, 255, 255, 0.03);
+        }
+
+        /* Row Hover Effect */
+        #signalTable tbody tr:hover {
+            background-color: rgba(41, 128, 185, 0.05);
+        }
+
+        /* Optimized Inline Editing */
+        .tbl-input {
+            border: 1px solid transparent;
+            background: transparent;
+            padding: 6px 8px;
+            font-family: 'Consolas', monospace;
+            color: var(--text-main);
+            width: 100%;
+            border-radius: 4px;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .tbl-input:hover {
+            background: rgba(41, 128, 185, 0.08);
+            border-bottom: 1px dashed var(--accent);
+        }
+
+        .tbl-input:focus {
+            border: 1px solid var(--accent);
+            background: var(--input-bg);
+            outline: none;
+            cursor: text;
+            box-shadow: 0 0 0 3px rgba(41, 128, 185, 0.15);
+        }
+
+        /* Specific style for Shift column to make it pop */
+        .shift-val {
+            font-weight: 800;
+            color: var(--text-main);
+            font-size: 1.4rem;
+            letter-spacing: -0.5px;
+        }
+
+        /* Impurity Row Styling */
+        #signalTable tbody tr.impurity {
+            opacity: 0.4;
+            filter: grayscale(1);
+            background-color: #f0f0f0 !important;
+        }
+        #signalTable tbody tr.impurity .tbl-input {
+            text-decoration: line-through;
+        }
+
+        #calcResult {
+            margin-top: 0; 
+            padding: 8px 15px; 
+            background: var(--input-bg); 
+            color: var(--text-main);
+            border: 1px solid var(--input-border);
+            border-radius: 4px; 
+            display: none;
+            text-align: center;
+            box-shadow: none;
+            flex: 1;
+            align-items: center;
+            justify-content: center;
+        }
+
+        [data-theme="dark"] #calcResult {
+            background: var(--input-bg);
+            color: var(--text-main);
+            border-color: var(--input-border);
+            box-shadow: none;
+        }
+
+        #calcText {
+            font-size: 1.6rem;
+            font-weight: 800;
+            line-height: 1.2;
+        }
+
+        #calcText i {
+            font-style: italic;
+            font-weight: 400;
+        }
+
+        .calc-btn-container {
+            display: flex;
+            align-items: stretch;
+            margin-top: 15px;
+            gap: 15px;
+            min-height: 56px;
+        }
+
+        .calc-btn-container .col-left {
+            flex: 0 0 280px;
+            display: flex;
+        }
+
+        .calc-btn-container .col-right {
+            flex: 1;
+            display: flex;
+        }
+
+        #calcBtnLarge {
+            font-size: 1.65rem;
+            height: 100%;
+            padding: 8px 20px;
+            margin: 0;
+            width: 100%;
+        }
+
+        #addBtnLarge {
+            font-size: 1.45rem;
+            padding: 15px 25px;
+        }
+        
+        #errorMsg {
+            margin-top: 0;
+            padding: 10px;
+            background: rgba(192, 57, 43, 0.1);
+            border-radius: 4px;
+            display: none;
+            color: var(--danger);
+            font-weight: bold;
+            font-size: 1.8rem;
+            text-align: center;
+            flex: 1;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--danger);
+        }
+
+        canvas {
+            width: 100%;
+            height: 120px;
+            margin-top: 15px;
+            border: 1px solid var(--border);
+            background: var(--canvas-bg);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body data-theme="light">
+
+<!-- Toast Container -->
+<div id="toastContainer" class="toast-container"></div>
+
+<!-- WRAPPED CONTENT START -->
+<div id="mainApp">
+
+<!-- OCR Section -->
+<div class="ocr-section">
+    <label style="display:flex; align-items:center; gap:6px; font-size: 1.2rem; margin-bottom: 10px;">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:22px;height:22px;">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+        </svg>
+        OCR Quick Input
+    </label>
+    <div class="helper" style="font-size: 0.85rem; margin-bottom: 10px; line-height: 1.4;">Supports Ctrl+V to paste images<br>(Please align text horizontally)</div>
+    
+    <label for="ocrInput" class="btn-neutral" style="display:flex; align-items:center; justify-content:center; gap:6px; padding: 10px; font-size: 1rem; cursor: pointer; border-style: dashed; margin-bottom: 10px; width: 100%; box-sizing: border-box;">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:18px;height:18px;">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+        </svg>
+        Browse Image
+    </label>
+    <input type="file" id="ocrInput" accept="image/*" style="display: none;">
+    
+    <div style="display:flex; gap:8px; margin-bottom:10px;">
+        <button id="rotateLeftBtn" class="btn-neutral" style="padding: 8px; width: 100%; height: 44px;" title="Rotate Left">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:24px;height:24px;">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+            </svg>
+        </button>
+        <button id="rotateRightBtn" class="btn-neutral" style="padding: 8px; width: 100%; height: 44px;" title="Rotate Right">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:24px;height:24px;">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 15l6-6m0 0l-6-6m6 6H9a6 6 0 000 12h3" />
+            </svg>
+        </button>
+    </div>
+
+    <button id="ocrBtn" class="btn-primary" disabled style="padding: 10px; font-size: 1rem; width: 100%; margin-bottom: 10px;">Start Recognition</button>
+    <div id="ocrStatus" style="text-align: center; font-weight: 600;">Waiting for upload or paste...</div>
+    
+    <!-- Original Image Preview -->
+    <div id="mainPreviewContainer" style="margin-top: 15px; display: none; text-align: center; border-top: 1px dashed var(--border); padding-top: 10px;">
+        <div class="helper" style="margin-bottom: 8px; font-size: 0.8rem;">Preview (Rotated)</div>
+        <div style="width: 100%; overflow: auto; display: flex; justify-content: center; background: rgba(0,0,0,0.05); border-radius: 4px; padding: 5px;">
+            <canvas id="mainPreviewCanvas" style="display: block; width: 30%; height: auto;"></canvas>
+        </div>
+    </div>
+
+    <div class="ocr-preview-container">
+        <canvas id="ocrCanvas" class="hidden-canvas"></canvas>
+        <img id="ocrDebugPreview" class="ocr-thumb" style="display:none;" title="Preprocessed">
+    </div>
+</div>
+
+<div class="container">
+    <div class="header-row">
+        <h1>NMR Data Process & Report Generator</h1>
+        <button id="themeToggle" class="theme-toggle" title="Toggle Dark/Light Mode" style="width:40px;height:40px;padding:8px;">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:24px;height:24px;">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+            </svg>
+        </button>
+    </div>
+
+    <div class="section">
+        <h3>1. Calculate Parameters</h3>
+        <div class="row">
+            <div class="col">
+                <label for="freq">Frequency (MHz)</label>
+                <input type="number" id="freq" value="400">
+            </div>
+            <div class="col">
+                <label for="pattern">Splitting Pattern</label>
+                <select id="pattern" onchange="updateUI()">
+                    <option value="s">singlet (s)</option>
+                    <option value="d">doublet (d)</option>
+                    <option value="t">triplet (t)</option>
+                    <option value="q">quartet (q)</option>
+                    <option value="p">quintet (p)</option>
+                    <option value="h">sextet (sxt)</option>
+                    <option value="dd">doublet of doublets (dd)</option>
+                    <option value="dt">doublet of triplets  (dt)</option>
+                    <option value="td">triplet of doublets (td)</option>
+                    <option value="tt">triplet of triplets (tt)</option>
+                    <option value="qd">quartet of doublets (qd)</option>
+                    <option value="dq">doublet of quartets  (dq)</option>
+                    <option value="ddd">ddd</option>
+                    <option value="m">multiplet (m)</option>
+                    <option value="br">broad singlet (br)</option>
+                    <option value="custom">Custom...</option>
+                </select>
+                <input type="text" id="customPattern" placeholder="e.g. ddt or dddd" style="display:none; margin-top:8px;">
+            </div>
+        </div>
+        
+        <label for="peaks" style="margin-top: 15px;">Peak Positions (ppm)</label>
+        <div class="helper">Enter peak values (separated by space or comma).</div>
+        <textarea id="peaks" rows="2" placeholder="e.g. 7.25 7.23 7.21"></textarea>
+
+        <div class="calc-btn-container">
+            <div class="col-left">
+                <button id="calcBtnLarge" onclick="calculate()" class="btn-primary">Calculate J & Center</button>
+            </div>
+            <div class="col-right">
+                 <div id="calcResult">
+                    <span id="calcText"></span>
+                 </div>
+                 <div id="errorMsg"></div>
+            </div>
+        </div>
+        
+        <div class="row" style="margin-top: 15px; border-top: 1px dashed var(--border); padding-top: 15px;">
+             <div class="col" style="flex: 0 0 100px;">
+                <label>Protons (H)</label>
+                <input type="number" id="tempH" value="1" step="0.1">
+            </div>
+            <div class="col">
+                <label>&nbsp;</label>
+                <button id="addBtnLarge" onclick="addToTable()" class="btn-success">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:20px;height:20px;">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                    </svg>
+                    Add to Table
+                </button>
+            </div>
+        </div>
+        
+        <canvas id="spectrumCanvas" width="800" height="120"></canvas>
+    </div>
+
+    <div class="section">
+        <h3>
+            <span>2. Signal Table</span>
+            <button onclick="clearAllData()" class="btn-danger btn-sm">Clear All Data</button>
+        </h3>
+        <table id="signalTable">
+            <thead>
+                <tr>
+                    <th width="15%">Shift (ppm)</th>
+                    <th width="10%">Mult.</th>
+                    <th width="25%">J (Hz)</th>
+                    <th width="10%">Integ. (H)</th>
+                    <th width="25%">Assignment</th>
+                    <th width="15%">Action</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h3>3. Report</h3>
+        <div class="row" style="margin-bottom: 10px; align-items: flex-end;">
+            <div class="col">
+                <label for="solventSelect">Solvent</label>
+                <select id="solventSelect" onchange="generateReport()">
+                    <option value="CDCl3">CDCl3</option>
+                    <option value="DMSO-d6">DMSO-d6</option>
+                    <option value="CD3OD">CD3OD</option>
+                    <option value="D2O">D2O</option>
+                    <option value="Acetone-d6">Acetone-d6</option>
+                    <option value="C6D6">C6D6</option>
+                </select>
+            </div>
+            <div class="col"><button onclick="generateReport()" class="btn-neutral">Regenerate String</button></div>
+            <div class="col"><button onclick="copyReport()" class="btn-primary">Copy to Clipboard</button></div>
+        </div>
+        <div id="reportOutput" contenteditable="true" title="Click to edit manually"></div>
+    </div>
+</div>
+</div> <!-- END WRAPPED CONTENT -->
+
+<script>
+    let currentCalc = { shift: null, jVals: [], mult: 'd' };
+
+    // --- Toast Logic ---
+    function showToast(message, type = 'success') {
+        const container = document.getElementById('toastContainer');
+        if (!container) return;
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.textContent = message;
+        container.appendChild(toast);
+        void toast.offsetWidth;
+        toast.classList.add('show');
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    // --- Life Cycle & Persistence ---
+    window.addEventListener('DOMContentLoaded', () => {
+        initTheme();
+        loadData();
+    });
+
+    function initTheme() {
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.body.setAttribute('data-theme', savedTheme);
+        document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+    }
+
+    function toggleTheme() {
+        const currentTheme = document.body.getAttribute('data-theme');
+        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+        document.body.setAttribute('data-theme', newTheme);
+        localStorage.setItem('theme', newTheme);
+        const peaks = parseInput().peaks;
+        if (peaks.length > 0) drawSpectrum(peaks);
+    }
+
+    function saveData() {
+        const rows = [];
+        document.querySelectorAll('#signalTable tbody tr').forEach(tr => {
+            rows.push({
+                shift: tr.querySelector('.shift-val').value,
+                mult: tr.querySelector('.mult-val').value,
+                j: tr.querySelector('.j-val').value,
+                h: tr.querySelector('.h-val').value,
+                assign: tr.querySelector('.assign-val').value,
+                isImpurity: tr.classList.contains('impurity')
+            });
+        });
+        localStorage.setItem('nmrData', JSON.stringify(rows));
+    }
+
+    function loadData() {
+        const dataStr = localStorage.getItem('nmrData');
+        if (!dataStr) return;
+        const data = JSON.parse(dataStr);
+        const tbody = document.querySelector('#signalTable tbody');
+        tbody.innerHTML = '';
+        
+        data.forEach(item => {
+            const row = document.createElement('tr');
+            if (item.isImpurity) row.classList.add('impurity');
+            row.innerHTML = `
+                <td><input type="text" value="${item.shift}" class="tbl-input shift-val"></td>
+                <td><input type="text" value="${item.mult}" class="tbl-input mult-val"></td>
+                <td><input type="text" value="${item.j}" class="tbl-input j-val"></td>
+                <td><input type="number" step="0.1" value="${item.h}" class="tbl-input h-val"></td>
+                <td><input type="text" value="${item.assign || ''}" placeholder="e.g. Ar-H" class="tbl-input assign-val"></td>
+                <td>
+                    <div style="display:flex; gap:5px; align-items:center;">
+                        <button onclick="toggleImpurity(this)" class="btn-neutral btn-sm" title="Mark as Impurity" style="padding:4px 8px;">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:16px;height:16px;">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
+                            </svg>
+                        </button>
+                        <button onclick="removeRow(this)" class="btn-danger btn-sm" title="Delete" style="padding:4px 8px;">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:16px;height:16px;">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                            </svg>
+                        </button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+        generateReport();
+    }
+
+    function clearAllData() {
+        if(confirm('Are you sure you want to clear all saved signals?')) {
+            localStorage.removeItem('nmrData');
+            document.querySelector('#signalTable tbody').innerHTML = '';
+            generateReport();
+            showToast("All data cleared", "info");
+        }
+    }
+
+    // --- Core Logic ---
+
+    function parseInput() {
+        const raw = document.getElementById('peaks').value;
+        const freq = parseFloat(document.getElementById('freq').value);
+        let peaks = raw.split(/[Koh,\s\n\u2013\u2014\-]+/).map(v => parseFloat(v)).filter(v => !isNaN(v));
+        peaks.sort((a, b) => b - a);
+        return { peaks, freq };
+    }
+
+    function validatePeaks(peaks, pattern) {
+        const count = peaks.length;
+        const p = pattern.toLowerCase();
+        const expectations = {
+            'd': 2, 't': 3, 'q': 4, 'p': 5, 'quint': 5, 'h': 6, 'sext': 6, 'sept': 7,
+            'dd': 4, 'dt': 6, 'td': 6, 'tt': 9, 'ddd': 8, 'qd': 8, 'dq': 8,
+            'ddt': 12, 'dtd': 12, 'tdd': 12, 'dddd': 16
+        };
+        if (expectations[p]) {
+            if (count !== expectations[p]) return `Error: ${p.toUpperCase()} expects ${expectations[p]} peaks, but you entered ${count}.`;
+        } else if (p === 's' || p === 'br') {
+            if (count > 1) return `Hint: Singlet (s/br) usually requires only 1 value, you entered ${count} (will take average).`;
+        }
+        return null;
+    }
+
+    function getRobustAverage(arr) {
+        if (arr.length === 0) return 0;
+        const sorted = [...arr].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        const validValues = arr.filter(v => {
+            const diff = Math.abs(v - median);
+            return diff < 0.5 || (diff / median) < 0.2;
+        });
+        if (validValues.length === 0) return median;
+        const sum = validValues.reduce((a, b) => a + b, 0);
+        return sum / validValues.length;
+    }
+
+    function resolveJValuesRecursive(peaksHz, maxJCount = 10) {
+        let currentPeaks = [...peaksHz].sort((a, b) => b - a);
+        let jVals = [];
+        let iterations = 0;
+        while (currentPeaks.length > 1 && iterations < 10 && jVals.length < maxJCount) {
+            iterations++;
+            let j = currentPeaks[0] - currentPeaks[1];
+            let partnersFound = 0;
+            let tempRemaining = [...currentPeaks];
+            let nextGeneration = [];
+            while (tempRemaining.length > 0) {
+                let p = tempRemaining.shift();
+                let partnerIdx = tempRemaining.findIndex(other => Math.abs((p - other) - j) < 0.5);
+                if (partnerIdx !== -1) {
+                    let partner = tempRemaining.splice(partnerIdx, 1)[0];
+                    nextGeneration.push((p + partner) / 2);
+                    partnersFound++;
+                } else break;
+            }
+            if (partnersFound > 0 && tempRemaining.length === 0) {
+                jVals.push(j);
+                currentPeaks = nextGeneration;
+            } else break;
+        }
+        return jVals;
+    }
+
+    function calculate() {
+        const resultDiv = document.getElementById('calcResult');
+        const errorDiv = document.getElementById('errorMsg');
+        const resultText = document.getElementById('calcText');
+        resultDiv.style.display = 'none'; errorDiv.style.display = 'none';
+        
+        const { peaks, freq } = parseInput();
+        let pattern = document.getElementById('pattern').value;
+        if (pattern === 'custom') pattern = document.getElementById('customPattern').value.trim() || 'm';
+        
+        if (peaks.length === 0) return;
+        const errorMsg = validatePeaks(peaks, pattern);
+        if (errorMsg && errorMsg.startsWith('Error')) {
+            errorDiv.innerText = errorMsg; errorDiv.style.display = 'flex';
+            drawSpectrum(peaks); return;
+        }
+
+        const p = pattern.toLowerCase();
+        const hz = peaks.map(v => v * freq);
+        let jList = [];
+        let center = (peaks[0] + peaks[peaks.length-1]) / 2;
+
+        if (p === 'm') {
+            let maxP = Math.max(...peaks), minP = Math.min(...peaks);
+            currentCalc = { shift: `${maxP.toFixed(2)}–${minP.toFixed(2)}`, jVals: [], mult: pattern };
+        } else if (['s', 'br'].includes(p)) {
+            currentCalc = { shift: center.toFixed(2), jVals: [], mult: pattern };
+        } else if (p === 'd') {
+            jList = [hz[0] - hz[1]];
+        } else if (['t', 'q', 'p', 'quint', 'h', 'sext', 'sept'].includes(p)) {
+            let gaps = [];
+            for (let i = 0; i < hz.length - 1; i++) gaps.push(hz[i] - hz[i+1]);
+            jList = [getRobustAverage(gaps)];
+        } else if (p === 'dd') {
+            jList = [(hz[0]-hz[2]+hz[1]-hz[3])/2, (hz[0]-hz[1]+hz[2]-hz[3])/2];
+        } else if (p === 'td') {
+            let c1 = (hz[0]+hz[1])/2, c2 = (hz[2]+hz[3])/2, c3 = (hz[4]+hz[5])/2;
+            jList = [(d1-d2+d2-d3)/2, getRobustAverage([hz[0]-hz[1], hz[2]-hz[3], hz[4]-hz[5]])];
+        } else if (p === 'dt') {
+            let c1 = (hz[0]+hz[1]+hz[2])/3, c2 = (hz[3]+hz[4]+hz[5])/3;
+            jList = [c1 - c2, getRobustAverage([hz[0]-hz[1], hz[1]-hz[2], hz[3]-hz[4], hz[4]-hz[5]])];
+        } else if (p === 'tt') {
+            // Triplet of Triplets (9 peaks ideally)
+            if (hz.length === 9) {
+                // J_small: average internal gaps of each triplet (P1-P2, P2-P3, P4-P5, etc.)
+                let smallGaps = [
+                    hz[0]-hz[1], hz[1]-hz[2], 
+                    hz[3]-hz[4], hz[4]-hz[5], 
+                    hz[6]-hz[7], hz[7]-hz[8]
+                ];
+                let jSmall = getRobustAverage(smallGaps);
+
+                // J_large: average gaps between sub-triplet centers (P2, P5, P8)
+                let jLarge = getRobustAverage([hz[1]-hz[4], hz[4]-hz[7]]);
+                
+                jList = [jLarge, jSmall];
+            } else {
+                jList = resolveJValuesRecursive(hz);
+            }
+        } else if (p === 'ddd') {
+            // Doublet of Doublet of Doublets (8 peaks)
+            // Ideally 8 distinct peaks. We can improve precision by averaging 4 measurements for each J.
+            if (hz.length === 8) {
+                // Assuming J1 > J2 > J3 and no overlap (First order)
+                // J1 = Average of (P1-P5), (P2-P6), (P3-P7), (P4-P8)
+                let j1 = ((hz[0]-hz[4]) + (hz[1]-hz[5]) + (hz[2]-hz[6]) + (hz[3]-hz[7])) / 4;
+                
+                // J2 = Average of (P1-P3), (P2-P4), (P5-P7), (P6-P8)
+                let j2 = ((hz[0]-hz[2]) + (hz[1]-hz[3]) + (hz[4]-hz[6]) + (hz[5]-hz[7])) / 4;
+                
+                // J3 = Average of (P1-P2), (P3-P4), (P5-P6), (P7-P8)
+                let j3 = ((hz[0]-hz[1]) + (hz[2]-hz[3]) + (hz[4]-hz[5]) + (hz[6]-hz[7])) / 4;
+                
+                jList = [j1, j2, j3];
+            } else {
+                jList = resolveJValuesRecursive(hz);
+            }
+        } else if (p === 'dq' || p === 'qd') {
+            let gaps = [];
+            for(let i=0; i<hz.length-1; i++) gaps.push(hz[i]-hz[i+1]);
+            let jSmall = getRobustAverage(gaps);
+            let span = hz[0] - hz[hz.length-1];
+            let jLargeDQ = span - 3 * jSmall;
+            let predGapDQ = jLargeDQ - 3 * jSmall;
+            let jLargeQD = (span - jSmall) / 3;
+            let predGapQD = jLargeQD - jSmall;
+            let actualMiddleGap = hz[3] - hz[4];
+            let errDQ = Math.abs(predGapDQ - actualMiddleGap);
+            let errQD = Math.abs(predGapQD - actualMiddleGap);
+            jList = (errDQ < errQD) ? [jLargeDQ, jSmall] : [jLargeQD, jSmall];
+        } else {
+            jList = resolveJValuesRecursive(hz);
+        }
+
+        if (!currentCalc.shift || p !== 'm') {
+            currentCalc = { 
+                shift: center.toFixed(2), 
+                jVals: jList.map(j => parseFloat(Math.abs(j).toFixed(1))).sort((a,b)=>b-a), 
+                mult: pattern 
+            };
+        }
+        
+        let jText = currentCalc.jVals.length > 0 ? ` | <i>J</i> = ${currentCalc.jVals.join(', ')} Hz` : '';
+        resultText.innerHTML = `${currentCalc.shift} ppm (${pattern})${jText}`;
+        resultDiv.style.display = 'flex';
+        drawSpectrum(peaks);
+    }
+
+    function addToTable() {
+        const h = document.getElementById('tempH').value;
+        if (!currentCalc.shift && document.getElementById('peaks').value.trim()) calculate();
+        if (!currentCalc.shift) return;
+        const tbody = document.querySelector('#signalTable tbody');
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><input type="text" value="${currentCalc.shift}" class="tbl-input shift-val"></td>
+            <td><input type="text" value="${currentCalc.mult}" class="tbl-input mult-val"></td>
+            <td><input type="text" value="${currentCalc.jVals.join(', ')}" class="tbl-input j-val"></td>
+            <td><input type="number" step="0.1" value="${h}" class="tbl-input h-val"></td>
+            <td><input type="text" value="" placeholder="e.g. Ar-H" class="tbl-input assign-val"></td>
+            <td>
+                <div style="display:flex; gap:5px; align-items:center;">
+                    <button onclick="toggleImpurity(this)" class="btn-neutral btn-sm" title="Mark as Impurity" style="padding:4px 8px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:16px;height:16px;">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
+                        </svg>
+                    </button>
+                    <button onclick="removeRow(this)" class="btn-danger btn-sm" title="Delete" style="padding:4px 8px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:16px;height:16px;">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                        </svg>
+                    </button>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(row);
+        sortRows(); generateReport(); saveData();
+        document.getElementById('peaks').value = ''; document.getElementById('calcResult').style.display = 'none';
+        currentCalc = { shift: null, jVals: [], mult: 'd' };
+    }
+
+    function toggleImpurity(btn) {
+        const row = btn.closest('tr');
+        row.classList.toggle('impurity');
+        generateReport();
+        saveData();
+    }
+
+    function removeRow(btn) { btn.closest('tr').remove(); generateReport(); saveData(); }
+    function sortRows() {
+        const tbody = document.querySelector('#signalTable tbody');
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        rows.sort((a, b) => (parseFloat(b.querySelector('.shift-val').value)||0) - (parseFloat(a.querySelector('.shift-val').value)||0));
+        rows.forEach(r => tbody.appendChild(r));
+    }
+
+    function generateReport() {
+        const rows = document.querySelectorAll('#signalTable tbody tr');
+        let reports = [];
+        rows.forEach(r => {
+            if (r.classList.contains('impurity')) return; // Skip impurity rows
+            
+            const shift = r.querySelector('.shift-val').value;
+            let mult = r.querySelector('.mult-val').value;
+            const j = r.querySelector('.j-val').value;
+            const h = r.querySelector('.h-val').value;
+            const assign = r.querySelector('.assign-val').value;
+            
+            let p = ""; const mLower = mult.toLowerCase();
+            if (mLower === 'm') p = `${shift} (m, ${h}H`;
+            else if (mLower === 'br') p = `${shift} (br s, ${h}H`;
+            else if (mLower === 's') p = `${shift} (s, ${h}H`;
+            else {
+                p = `${shift} (${mult}`;
+                if (j) p += `, <i>J</i> = ${j} Hz`;
+                p += `, ${h}H`;
+            }
+            
+            if (assign) p += `, ${assign}`;
+            p += ")";
+            reports.push(p);
+        });
+
+        // Generate Prefix
+        const freq = document.getElementById('freq').value || '400';
+        const solventRaw = document.getElementById('solventSelect') ? document.getElementById('solventSelect').value : 'CDCl3';
+        
+        let solventFormatted = solventRaw;
+        if(solventRaw === 'CDCl3') solventFormatted = 'CDCl<sub>3</sub>';
+        else if(solventRaw === 'DMSO-d6') solventFormatted = 'DMSO-<i>d</i><sub>6</sub>';
+        else if(solventRaw === 'CD3OD') solventFormatted = 'CD<sub>3</sub>OD';
+        else if(solventRaw === 'D2O') solventFormatted = 'D<sub>2</sub>O';
+        else if(solventRaw === 'Acetone-d6') solventFormatted = 'Acetone-<i>d</i><sub>6</sub>';
+        else if(solventRaw === 'C6D6') solventFormatted = 'C<sub>6</sub>D<sub>6</sub>';
+
+        const prefix = `<b><sup>1</sup>H NMR (${freq} MHz, ${solventFormatted})</b> δ `;
+        document.getElementById('reportOutput').innerHTML = prefix + reports.join(', ');
+    }
+
+    async function copyReport() {
+        const out = document.getElementById("reportOutput");
+        
+        // Try modern API first (works in HTTPS/localhost)
+        if (navigator.clipboard && navigator.clipboard.write) {
+            try {
+                const data = [new ClipboardItem({ 
+                    'text/html': new Blob([out.innerHTML], { type: 'text/html' }), 
+                    'text/plain': new Blob([out.innerText], { type: 'text/plain' }) 
+                })];
+                await navigator.clipboard.write(data); 
+                showToast("Report string copied successfully!", "success");
+                return;
+            } catch (err) { 
+                console.warn("Clipboard API failed, trying fallback...", err);
+            }
+        }
+
+        // Fallback for file:// protocol or older browsers
+        try {
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(out);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            
+            const successful = document.execCommand('copy');
+            selection.removeAllRanges(); // Deselect
+            
+            if (successful) {
+                showToast("Report copied!", "success");
+            } else {
+                throw new Error("execCommand returned false");
+            }
+        } catch (err) {
+            console.error(err);
+            showToast("Copy failed. Please select and copy manually.", "error");
+        }
+    }
+
+    function updateUI() {
+        const p = document.getElementById('pattern').value;
+        document.getElementById('customPattern').style.display = (p === 'custom' ? 'block' : 'none');
+    }
+
+    function drawSpectrum(peaks) {
+        const canvas = document.getElementById('spectrumCanvas');
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width, h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
+        if (peaks.length === 0) return;
+        let min = Math.min(...peaks), max = Math.max(...peaks);
+        let range = max - min || 1, pad = range * 0.4;
+        let pMax = max + pad, pMin = min - pad, pSpan = pMax - pMin;
+        let gamma = pSpan / 60;
+        const isDark = document.body.getAttribute('data-theme') === 'dark';
+        ctx.beginPath(); ctx.strokeStyle = isDark ? '#3498db' : '#2980b9'; ctx.lineWidth = 2;
+        ctx.fillStyle = isDark ? 'rgba(52, 152, 219, 0.2)' : 'rgba(41, 128, 185, 0.15)';
+        for (let x = 0; x <= w; x++) {
+            let cur = pMax - (x / w) * pSpan, intensity = 0;
+            for (let p of peaks) intensity += 1 / (1 + Math.pow((cur - p) / gamma, 2));
+            let y = h - Math.min(intensity * (h * 0.7), h * 0.95);
+            if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke(); ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath(); ctx.fill();
+    }
+
+    // --- OCR Logic ---
+    const ocrInput = document.getElementById('ocrInput');
+    const ocrBtn = document.getElementById('ocrBtn');
+    const rotateLeftBtn = document.getElementById('rotateLeftBtn');
+    const rotateRightBtn = document.getElementById('rotateRightBtn');
+    const ocrStatus = document.getElementById('ocrStatus');
+    const ocrCanvas = document.getElementById('ocrCanvas');
+    const ocrDebugPreview = document.getElementById('ocrDebugPreview');
+    const peaksArea = document.getElementById('peaks');
+    
+    let currentImg = null;
+    let rotationAngle = 90;
+
+    function renderCanvas() {
+        if (!currentImg) return;
+        const scale = 3.0;
+        const rad = rotationAngle * Math.PI / 180;
+        const sin = Math.abs(Math.sin(rad));
+        const cos = Math.abs(Math.cos(rad));
+        const originalWidth = currentImg.width;
+        const originalHeight = currentImg.height;
+        const canvasWidth = (originalWidth * cos + originalHeight * sin) * scale;
+        const canvasHeight = (originalWidth * sin + originalHeight * cos) * scale;
+        ocrCanvas.width = canvasWidth;
+        ocrCanvas.height = canvasHeight;
+        const ctx = ocrCanvas.getContext('2d');
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+        ctx.save();
+        ctx.translate(canvasWidth / 2, canvasHeight / 2);
+        ctx.rotate(rad);
+        ctx.scale(scale, scale);
+        ctx.drawImage(currentImg, -originalWidth / 2, -originalHeight / 2);
+        ctx.restore();
+        const imgData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+        const data = imgData.data;
+        const width = imgData.width;
+        const height = imgData.height;
+        const sharpenData = new Uint8ClampedArray(data);
+        const kernel = [0, -1, 0, -1, 5, -1, 0, -1, 0];
+        for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+                const idx = (y * width + x) * 4;
+                let r = 0, g = 0, b = 0;
+                let kIdx = 0;
+                for (let ky = -1; ky <= 1; ky++) {
+                    for (let kx = -1; kx <= 1; kx++) {
+                        const pIdx = ((y + ky) * width + (x + kx)) * 4;
+                        const weight = kernel[kIdx++];
+                        r += data[pIdx] * weight;
+                        g += data[pIdx + 1] * weight;
+                        b += data[pIdx + 2] * weight;
+                    }
+                }
+                sharpenData[idx] = r; sharpenData[idx + 1] = g; sharpenData[idx + 2] = b;
+            }
+        }
+        for(let i=0; i<data.length; i++) data[i] = sharpenData[i];
+        for (let i = 0; i < data.length; i += 4) {
+            const avg = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+            const val = avg > 230 ? 255 : 0;
+            data[i] = val; data[i + 1] = val; data[i + 2] = val;
+        }
+        ctx.putImageData(imgData, 0, 0);
+        ocrDebugPreview.src = ocrCanvas.toDataURL('image/png');
+    }
+
+    function renderPreview() {
+        if (!currentImg) return;
+        const canvas = document.getElementById('mainPreviewCanvas');
+        const container = document.getElementById('mainPreviewContainer');
+        if (!canvas || !container) return;
+        canvas.width = currentImg.height;
+        canvas.height = currentImg.width;
+        const ctx = canvas.getContext('2d');
+        ctx.save();
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate(90 * Math.PI / 180);
+        ctx.drawImage(currentImg, -currentImg.width / 2, -currentImg.height / 2);
+        ctx.restore();
+        container.style.display = 'block';
+    }
+
+    function handleImageLoad(file, autoStart) {
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+                currentImg = img;
+                rotationAngle = 90;
+                renderCanvas();
+                renderPreview();
+                ocrBtn.disabled = false;
+                if (autoStart) {
+                    ocrStatus.textContent = 'Image pasted successfully, starting automatically...';
+                    ocrBtn.click();
+                } else {
+                    ocrStatus.textContent = 'Image loaded. Please ensure text is horizontal, or use the rotate buttons.';
+                }
+            };
+            img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    if (ocrInput) {
+        ocrInput.addEventListener('change', (e) => handleImageLoad(e.target.files[0], false));
+    }
+    if (rotateLeftBtn) {
+        rotateLeftBtn.addEventListener('click', () => {
+            rotationAngle = (rotationAngle - 90) % 360;
+            renderCanvas();
+        });
+    }
+    if (rotateRightBtn) {
+        rotateRightBtn.addEventListener('click', () => {
+            rotationAngle = (rotationAngle + 90) % 360;
+            renderCanvas();
+        });
+    }
+    document.addEventListener('paste', (e) => {
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        for (let index in items) {
+            const item = items[index];
+            if (item.kind === 'file' && item.type.includes('image/')) {
+                handleImageLoad(item.getAsFile(), true);
+                e.preventDefault();
+                break;
+            }
+        }
+    });
+
+    if (ocrBtn) {
+        ocrBtn.addEventListener('click', async () => {
+            if (!currentImg) return;
+            ocrBtn.disabled = true;
+            ocrStatus.textContent = 'Initializing engine...';
+            try {
+                const worker = await Tesseract.createWorker('eng');
+                await worker.setParameters({
+                    tessedit_char_whitelist: '0123456789. ',
+                    tessedit_pageseg_mode: '6'
+                });
+                ocrStatus.textContent = 'Recognizing...';
+                const { data: { text } } = await worker.recognize(ocrCanvas.toDataURL('image/png'));
+                const cleanedText = text.replace(/\s+/g, ' ').trim();
+                if (cleanedText) {
+                    if (peaksArea.value.trim()) {
+                        peaksArea.value += ' ' + cleanedText;
+                    } else {
+                        peaksArea.value = cleanedText;
+                    }
+                    ocrStatus.textContent = 'Done!';
+                    showToast("OCR Recognition Success!");
+                    calculate();
+                } else {
+                    ocrStatus.textContent = 'No digits detected.';
+                    showToast("No digits detected", "error");
+                }
+                await worker.terminate();
+            } catch (err) {
+                console.error(err);
+                ocrStatus.textContent = 'Error: ' + err.message;
+                showToast("OCR Error", "error");
+            } finally {
+                ocrBtn.disabled = false;
+            }
+        });
+    }
+</script>
+</body>
+</html>
