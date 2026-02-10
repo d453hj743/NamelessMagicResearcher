@@ -1217,42 +1217,52 @@
     });
 
     if (ocrBtn) {
-        ocrBtn.addEventListener('click', async () => {
-            if (!currentImg) return;
-            ocrBtn.disabled = true;
-            ocrStatus.textContent = 'Initializing engine...';
-            try {
-                const worker = await Tesseract.createWorker('eng');
-                await worker.setParameters({
-                    tessedit_char_whitelist: '0123456789. ',
-                    tessedit_pageseg_mode: '6'
-                });
-                ocrStatus.textContent = 'Recognizing...';
-                const { data: { text } } = await worker.recognize(ocrCanvas.toDataURL('image/png'));
-                const cleanedText = text.replace(/\s+/g, ' ').trim();
-                if (cleanedText) {
-                    if (peaksArea.value.trim()) {
-                        peaksArea.value += ' ' + cleanedText;
+             ocrBtn.addEventListener('click', async () => {
+                 if (!currentImg) return;
+                 ocrBtn.disabled = true;
+                 ocrStatus.textContent = 'Initializing engine...';
+                 try {
+                     // 修正重點：明確指定語言包在 GitHub Pages 上的路徑
+                     const worker = await Tesseract.createWorker('eng', 1, {
+                         langPath: window.location.href.split('?')[0].split('#')[0].replace('index.html', ''),
+                        logger: m => {
+                            if (m.status === 'recognizing text') {
+                                ocrStatus.textContent = `Recognizing: ${Math.round(m.progress * 100)}%`;
+                            }
+                        }
+                    });
+   
+                    await worker.setParameters({
+                        tessedit_char_whitelist: '0123456789. ',
+                        tessedit_pageseg_mode: '6'
+                    });
+   
+                    ocrStatus.textContent = 'Processing...';
+                    const { data: { text } } = await worker.recognize(ocrCanvas.toDataURL('image/png'));
+                    const cleanedText = text.replace(/\s+/g, ' ').trim();
+                    if (cleanedText) {
+                        if (peaksArea.value.trim()) {
+                            peaksArea.value += ' ' + cleanedText;
+                        } else {
+                            peaksArea.value = cleanedText;
+                        }
+                        ocrStatus.textContent = 'Done!';
+                        showToast("OCR Recognition Success!");
+                        calculate();
                     } else {
-                        peaksArea.value = cleanedText;
+                        ocrStatus.textContent = 'No digits detected.';
+                        showToast("No digits detected", "error");
                     }
-                    ocrStatus.textContent = 'Done!';
-                    showToast("OCR Recognition Success!");
-                    calculate();
-                } else {
-                    ocrStatus.textContent = 'No digits detected.';
-                    showToast("No digits detected", "error");
+                    await worker.terminate();
+                } catch (err) {
+                    console.error("OCR Error Detail:", err);
+                    ocrStatus.textContent = 'Error: ' + err.message;
+                    showToast("OCR Error", "error");
+                } finally {
+                    ocrBtn.disabled = false;
                 }
-                await worker.terminate();
-            } catch (err) {
-                console.error(err);
-                ocrStatus.textContent = 'Error: ' + err.message;
-                showToast("OCR Error", "error");
-            } finally {
-                ocrBtn.disabled = false;
-            }
-        });
-    }
+            });
+        }
 </script>
 </body>
 </html>
