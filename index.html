@@ -377,10 +377,15 @@
 
         /* Impurity Row Styling */
         #signalTable tbody tr.impurity {
-            opacity: 0.4;
-            filter: grayscale(1);
-            background-color: #f0f0f0 !important;
+            opacity: 0.6;
+            background-color: rgba(0, 0, 0, 0.05) !important;
         }
+        
+        [data-theme="dark"] #signalTable tbody tr.impurity {
+            background-color: rgba(255, 255, 255, 0.05) !important;
+            opacity: 0.5;
+        }
+
         #signalTable tbody tr.impurity .tbl-input {
             text-decoration: line-through;
         }
