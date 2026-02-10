@@ -4,15 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>1H NMR Report Generator</title>
-    <link rel="manifest" href="manifest.json">
-        <meta name="theme-color" content="#2c3e50">
-        <script>
-            if ('serviceWorker' in navigator) {
-                window.addEventListener('load', () => {
-                    navigator.serviceWorker.register('sw.js');
-                });
-            }
-        </script>
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#2c3e50">
+    <!-- OCR: Tesseract.js (CDN for Stability) -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <script>
+        // Only register Service Worker on non-file protocols to avoid errors in local testing
+        if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js', { scope: './' });
+            });
+        }
+    </script>
     <style>
         :root {
             /* Light Mode Variables */
@@ -53,7 +56,7 @@
             display: flex;
             justify-content: center;
             transition: background-color 0.3s, color 0.3s;
-            font-size: 1.1rem;
+            font-size: 1.2rem;
         }
 
         /* Toast Notification Styles */
@@ -214,10 +217,7 @@
             border-radius: 4px;
             font-size: 1.15rem;
             box-sizing: border-box;
-        }
-
-        textarea {
-            font-family: 'Consolas', monospace;
+            font-family: Arial, Helvetica, sans-serif;
         }
 
         #reportOutput {
@@ -346,12 +346,12 @@
             border: 1px solid transparent;
             background: transparent;
             padding: 6px 8px;
-            font-family: 'Consolas', monospace;
             color: var(--text-main);
             width: 100%;
             border-radius: 4px;
             transition: all 0.2s;
             cursor: pointer;
+            font-family: Arial, Helvetica, sans-serif;
         }
 
         .tbl-input:hover {
@@ -1217,52 +1217,55 @@
     });
 
     if (ocrBtn) {
-             ocrBtn.addEventListener('click', async () => {
-                 if (!currentImg) return;
-                 ocrBtn.disabled = true;
-                 ocrStatus.textContent = 'Initializing engine...';
-                 try {
-                     // 修正重點：明確指定語言包在 GitHub Pages 上的路徑
-                     const worker = await Tesseract.createWorker('eng', 1, {
-                         langPath: window.location.href.split('?')[0].split('#')[0].replace('index.html', ''),
-                        logger: m => {
-                            if (m.status === 'recognizing text') {
-                                ocrStatus.textContent = `Recognizing: ${Math.round(m.progress * 100)}%`;
-                            }
+        ocrBtn.addEventListener('click', async () => {
+            if (!currentImg) return;
+            ocrBtn.disabled = true;
+            ocrStatus.textContent = 'Initializing engine...';
+            try {
+                // Ensure Tesseract is loaded from CDN and use stable configuration
+                const worker = await Tesseract.createWorker('eng', 1, {
+                    workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
+                    langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+                    corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core.wasm.js',
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            ocrStatus.textContent = `Recognizing: ${Math.round(m.progress * 100)}%`;
                         }
-                    });
-   
-                    await worker.setParameters({
-                        tessedit_char_whitelist: '0123456789. ',
-                        tessedit_pageseg_mode: '6'
-                    });
-   
-                    ocrStatus.textContent = 'Processing...';
-                    const { data: { text } } = await worker.recognize(ocrCanvas.toDataURL('image/png'));
-                    const cleanedText = text.replace(/\s+/g, ' ').trim();
-                    if (cleanedText) {
-                        if (peaksArea.value.trim()) {
-                            peaksArea.value += ' ' + cleanedText;
-                        } else {
-                            peaksArea.value = cleanedText;
-                        }
-                        ocrStatus.textContent = 'Done!';
-                        showToast("OCR Recognition Success!");
-                        calculate();
-                    } else {
-                        ocrStatus.textContent = 'No digits detected.';
-                        showToast("No digits detected", "error");
                     }
-                    await worker.terminate();
-                } catch (err) {
-                    console.error("OCR Error Detail:", err);
-                    ocrStatus.textContent = 'Error: ' + err.message;
-                    showToast("OCR Error", "error");
-                } finally {
-                    ocrBtn.disabled = false;
+                });
+
+                await worker.setParameters({
+                    tessedit_char_whitelist: '0123456789. ',
+                    tessedit_pageseg_mode: '6'
+                });
+
+                ocrStatus.textContent = 'Processing...';
+                const { data: { text } } = await worker.recognize(ocrCanvas.toDataURL('image/png'));
+                const cleanedText = text.replace(/\s+/g, ' ').trim();
+                
+                if (cleanedText) {
+                    if (peaksArea.value.trim()) {
+                        peaksArea.value += ' ' + cleanedText;
+                    } else {
+                        peaksArea.value = cleanedText;
+                    }
+                    ocrStatus.textContent = 'Done!';
+                    showToast("OCR Recognition Success!");
+                    calculate();
+                } else {
+                    ocrStatus.textContent = 'No digits detected.';
+                    showToast("No digits detected", "error");
                 }
-            });
-        }
+                await worker.terminate();
+            } catch (err) {
+                console.error("Detailed OCR Error:", err);
+                ocrStatus.textContent = 'Error: ' + err.message;
+                showToast("OCR Error", "error");
+            } finally {
+                ocrBtn.disabled = false;
+            }
+        });
+    }
 </script>
 </body>
 </html>
